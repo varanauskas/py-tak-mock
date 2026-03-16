@@ -1,6 +1,7 @@
 from cryptography.hazmat.primitives import serialization, hashes
 
-def create_and_enroll_client_certificate(domain, enrollment_port, username, password):
+def create_and_enroll_client_certificate(domain, enrollment_port, username, password, ssl_verify=True):
+    import ssl
     from urllib import request
     from urllib.request import Request, urlopen
     from xml.etree import ElementTree as ET
@@ -8,7 +9,9 @@ def create_and_enroll_client_certificate(domain, enrollment_port, username, pass
     from cryptography.hazmat.primitives.asymmetric import rsa
     import json
 
-    tlsConfig = ET.parse(request.build_opener().open(f"https://{domain}:{enrollment_port}/Marti/api/tls/config"))
+    ssl_context = None if ssl_verify else ssl._create_unverified_context()
+    tls_config_opener = request.build_opener(request.HTTPSHandler(context=ssl_context))
+    tlsConfig = ET.parse(tls_config_opener.open(f"https://{domain}:{enrollment_port}/Marti/api/tls/config"))
 
     rfc_4514_string = f"CN={username}"
     for elem in tlsConfig.getroot().iter():
@@ -27,9 +30,9 @@ def create_and_enroll_client_certificate(domain, enrollment_port, username, pass
     req = Request(f"https://{domain}:{enrollment_port}/Marti/api/tls/signClient/v2", data=csr, method="POST")
     req.add_header("Content-Type", "application/pkcs10")
     req.add_header("Authorization", f"Basic {request.base64.b64encode(f'{username}:{password}'.encode()).decode()}")
-    with urlopen(req) as response:
+    with urlopen(req, context=ssl_context) as response:
         data = json.load(response)
-        signed_cert_pem = f"-----BEGIN CERTIFICATE-----\n{data.get("signedCert").replace("\\n", "\n")}\n-----END CERTIFICATE-----"
+        signed_cert_pem = f"-----BEGIN CERTIFICATE-----\n{data.get('signedCert').replace('\\n', '\n')}\n-----END CERTIFICATE-----"
         ca_pems = []
         i = 0
         while f"ca{i}" in data:
