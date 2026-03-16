@@ -10,11 +10,12 @@ def create_and_enroll_client_certificate(domain, enrollment_port, username, pass
     import json
 
     ssl_context = None if ssl_verify else ssl._create_unverified_context()
-    tls_config_opener = request.build_opener(request.HTTPSHandler(context=ssl_context))
-    tlsConfig = ET.parse(tls_config_opener.open(f"https://{domain}:{enrollment_port}/Marti/api/tls/config"))
+    config_req = Request(f"https://{domain}:{enrollment_port}/Marti/api/tls/config")
+    config_req.add_header("Authorization", f"Basic {request.base64.b64encode(f'{username}:{password}'.encode()).decode()}")
+    tls_config = ET.fromstring(urlopen(config_req, context=ssl_context).read())
 
     rfc_4514_string = f"CN={username}"
-    for elem in tlsConfig.getroot().iter():
+    for elem in tls_config.iter():
         if (elem.tag.endswith("nameEntry")):
             name = elem.get("name", False)
             value = elem.get("value", False)
@@ -53,7 +54,7 @@ if __name__ == "__main__":
     domain = input("Domain: ")
     username = input("Username: ")
     password = input("Password: ")
-    private_key, certificate, ca_certificates = create_and_enroll_client_certificate(domain, enrollment_port, username, password)
+    private_key, certificate, ca_certificates = create_and_enroll_client_certificate(domain, enrollment_port, username, password, False)
     with open("client_cert.pem", "wb") as f:
         f.write(certificate.public_bytes(serialization.Encoding.PEM) + b"".join(ca_cert.public_bytes(serialization.Encoding.PEM) for ca_cert in ca_certificates))
     with open("client_key.pem", "wb") as f:
