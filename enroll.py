@@ -10,14 +10,14 @@ def auth_request(url, username, password, method="GET", data=None, content_type=
         req.add_header("Content-Type", content_type)
     return urlopen(req, context=ssl_context)
 
-def create_and_enroll_client_certificate(domain, enrollment_port, username, password, ssl_context=None):
+def create_and_enroll_client_certificate(host, enrollment_port, username, password, ssl_context=None):
     from xml.etree import ElementTree as ET
     from cryptography import x509
     from cryptography.hazmat.primitives.asymmetric import rsa
     import json
 
     tls_config = ET.fromstring(auth_request(
-        f"https://{domain}:{enrollment_port}/Marti/api/tls/config",
+        f"https://{host}:{enrollment_port}/Marti/api/tls/config",
         username,
         password,
         ssl_context=ssl_context
@@ -38,7 +38,7 @@ def create_and_enroll_client_certificate(domain, enrollment_port, username, pass
     csr = x509.CertificateSigningRequestBuilder().subject_name(subject).sign(private_key, hashes.SHA256()).public_bytes(serialization.Encoding.PEM)
 
     with auth_request(
-        f"https://{domain}:{enrollment_port}/Marti/api/tls/signClient/v2",
+        f"https://{host}:{enrollment_port}/Marti/api/tls/signClient/v2",
         username,
         password,
         method="POST",
@@ -64,19 +64,19 @@ def create_and_enroll_client_certificate(domain, enrollment_port, username, pass
         return private_key, certificate, ca_certificates
     
 if __name__ == "__main__":
+    import ssl
+    from getpass import getpass
     import argparse
-    parser = argparse.ArgumentParser(
-        prog="enroll.py",
-        description="Enroll client certificate and save it to client_cert.pem and client_key.pem",
-    )
-    parser.add_argument("host", nargs=1, help="Domain or IP address of the server to enroll with")
-    parser.add_argument("-port", "-p", nargs="?", type=int, default=8446, help="Enrollment port of the server (default: 8446)")
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("host", nargs="?", help="Domain or IP address of the server to enroll with")
+    parser.add_argument("-port", "-p", nargs="?", type=int, default=8446, help="Enrollment port of the server")
     parser.add_argument("--unverified-ssl", action="store_true", help="Don't verify SSL certificate of the server (not recommended)")
-    enrollment_port = 8446
-    domain = input("Domain: ")
+    args = parser.parse_args()
+    enrollment_port = args.port
+    host = args.host if args.host else input("Host: ")
     username = input("Username: ")
-    password = input("Password: ")
-    private_key, certificate, ca_certificates = create_and_enroll_client_certificate(domain, enrollment_port, username, password)
+    password = getpass("Password: ")
+    private_key, certificate, ca_certificates = create_and_enroll_client_certificate(host, enrollment_port, username, password, ssl_context=ssl._create_unverified_context() if args.unverified_ssl else None)
     with open("client_cert.pem", "wb") as f:
         f.write(certificate.public_bytes(serialization.Encoding.PEM) + b"".join(ca_cert.public_bytes(serialization.Encoding.PEM) for ca_cert in ca_certificates))
     with open("client_key.pem", "wb") as f:
